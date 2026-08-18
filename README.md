@@ -11,6 +11,7 @@ It allows adding, updating, ranking and visualizing student marks.
 - Calculate average marks
 - Visualize performance using bar chart
 - Rank students by marks
+- Input validation for student names, marks, and roll numbers (prevents empty names, invalid marks, and duplicate roll numbers)
 
 ## Technologies Used
 - Python
