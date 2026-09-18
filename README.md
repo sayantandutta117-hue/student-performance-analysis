@@ -12,6 +12,9 @@ It allows adding, updating, ranking and visualizing student marks.
 - Visualize performance using bar chart
 - Rank students by marks
 - Input validation for student names, marks, and roll numbers (prevents empty names, invalid marks, and duplicate roll numbers)
+- Grade calculation (A+, A, B, C, D, F)
+- Pass/Fail analysis with pass percentage
+- Attendance tracking and Attendance vs Marks visualization
 
 ## Technologies Used
 - Python
@@ -22,4 +25,4 @@ It allows adding, updating, ranking and visualizing student marks.
 ## How to Run
 1. Clone this repository
 2. Install requirements using: pip install -r requirements.txt
-3. Run: python student_analysis.py
+3. Run: python main.py
