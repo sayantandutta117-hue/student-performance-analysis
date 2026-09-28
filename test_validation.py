@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import sys
 import os
+import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -98,6 +99,31 @@ class TestValidateRoll(unittest.TestCase):
         self.assertEqual(result, 10)
         mock_print.assert_called_once()
         self.assertIn("numeric", mock_print.call_args[0][0])
+
+
+class TestDeleteStudent(unittest.TestCase):
+    def setUp(self):
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 90],
+            "phone": [1234567890, 1234567891]
+        })
+
+    def test_delete_existing_student(self):
+        with patch('builtins.input', return_value='1'):
+            with patch('builtins.print') as mock_print:
+                result = student_main.delete_student(self.student.copy())
+        self.assertEqual(len(result), 1)
+        self.assertNotIn(1, result["roll"].values)
+        mock_print.assert_any_call("Student with roll number 1 has been deleted successfully.")
+
+    def test_delete_non_existing_student(self):
+        with patch('builtins.input', return_value='99'):
+            with patch('builtins.print') as mock_print:
+                result = student_main.delete_student(self.student.copy())
+        self.assertEqual(len(result), 2)
+        mock_print.assert_any_call("Student with roll number 99 does not exist.")
 
 
 if __name__ == '__main__':

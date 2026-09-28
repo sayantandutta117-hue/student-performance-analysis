@@ -2,12 +2,13 @@
 
 ## About
 This project analyzes student performance using Python.
-It allows adding, updating, ranking and visualizing student marks.
+It allows adding, updating, deleting, ranking and visualizing student marks.
 
 ## Features
 - Add student details
 - Find maximum and minimum marks student
 - Update student details
+- Delete student details
 - Calculate average marks
 - Visualize performance using bar chart
 - Rank students by marks

@@ -36,51 +36,12 @@ def get_valid_roll(prompt, existing_rolls):
         except ValueError:
             print("Invalid input. Please enter a numeric value for roll number.")
 
-def get_valid_attendance(prompt):
-    while True:
-        try:
-            attendance = int(input(prompt))
-            if 0 <= attendance <= 100:
-                return attendance
-            else:
-                print("Invalid attendance. Please enter a value between 0 and 100.")
-        except ValueError:
-            print("Invalid input. Please enter a numeric value for attendance.")
-
-def calculate_grade(marks):
-    if marks >= 90:
-        return "A+"
-    elif marks >= 80:
-        return "A"
-    elif marks >= 70:
-        return "B"
-    elif marks >= 60:
-        return "C"
-    elif marks >= 50:
-        return "D"
-    else:
-        return "F"
-
-def show_grades_and_pass_fail(student):
-    if student.empty:
-        print("no student available")
-        return
-    student = student.copy()
-    student["grade"] = student["marks"].apply(calculate_grade)
-    student["status"] = student["marks"].apply(lambda x: "Pass" if x >= 50 else "Fail")
-    print(student[["name", "roll", "marks", "grade", "status"]])
-    pass_count = (student["marks"] >= 50).sum()
-    total = len(student)
-    pass_percentage = (pass_count / total) * 100 if total > 0 else 0
-    print(f"\nPass Percentage: {pass_percentage:.2f}%")
-
 def main():
     n= int(input("enter the number of students::"))
     name =  []
     roll=[]
     marks=[]
     phone= []
-    attendance = []
     existing_rolls = []
     for i in range(n):
         student_name = get_valid_name("enter student name:")
@@ -91,13 +52,11 @@ def main():
         if len(str(student_phone_number))!=10:
             print("reenter the phone number")
             student_phone_number = int(input("enter student phone number::"))
-        student_attendance = get_valid_attendance("enter student attendance (0-100):")
         name.append(student_name)
         roll.append(student_roll)
         marks.append(student_total_marks)
         phone.append(student_phone_number)
-        attendance.append(student_attendance)
-    student= pd.DataFrame({"name":name,"roll":roll,"marks":marks,"phone":phone,"attendance":attendance})
+    student= pd.DataFrame({"name":name,"roll":roll,"marks":marks,"phone":phone})
     print(student)
     return student
 
@@ -117,7 +76,6 @@ def add(student):
         roll= []
         marks= []
         phone= []
-        attendance = []
         existing_rolls = student["roll"].tolist()
         for i in range(n):
             new_student_name = get_valid_name("enter student name:")
@@ -128,13 +86,11 @@ def add(student):
             if len(str(new_student_phone_number))!=10:
                 print("reenter the phone number")
                 new_student_phone_number = int(input("enter student phone number::"))
-            new_student_attendance = get_valid_attendance("enter student attendance (0-100):")
             name.append(new_student_name)
             roll.append(new_student_roll)
             marks.append(new_student_total_marks)
             phone.append(new_student_phone_number)
-            attendance.append(new_student_attendance)
-        new_student= pd.DataFrame({"name":name,"roll":roll,"marks":marks,"phone":phone,"attendance":attendance})
+        new_student= pd.DataFrame({"name":name,"roll":roll,"marks":marks,"phone":phone})
         student=pd.concat([student,new_student],ignore_index=True)
         return student
     elif u.lower()=="n" or u.lower()=="no":
@@ -198,14 +154,6 @@ def visualize(student):
     plt.xlabel("student name",color="RED",fontsize=15)
     plt.ylabel("student marks",color="BLUE",fontsize=15)
     plt.title("Students performance",color="YELLOW",fontsize=15)
-    
-    if "attendance" in student.columns:
-        plt.figure()
-        plt.scatter(student["attendance"], student["marks"], color="blue")
-        plt.xlabel("Attendance (%)", color="RED", fontsize=15)
-        plt.ylabel("student marks", color="BLUE", fontsize=15)
-        plt.title("Attendance vs Marks", color="YELLOW", fontsize=15)
-    
     plt.show()
 
 def show_all_students(student):
@@ -221,8 +169,21 @@ def ranking(student):
     s= student.sort_values(by="marks",ascending=False)
     print(s)
 
+def delete_student(student):
+    if student.empty:
+        print("no student available")
+        return student
+    r = int(input("enter roll number to delete:"))
+    if r not in student["roll"].values:
+        print(f"Student with roll number {r} does not exist.")
+        return student
+    student = student[student["roll"] != r].reset_index(drop=True)
+    print(f"Student with roll number {r} has been deleted successfully.")
+    print(student)
+    return student
+
 if __name__ == "__main__":
-    student = pd.DataFrame(columns=["name","roll","marks","phone","attendance"])
+    student = pd.DataFrame(columns=["name","roll","marks","phone"])
     while True:
         print("1. PREPARING STUDENTS DETAILS")
         print("2. ADDING NEW STUDENTS")
@@ -233,7 +194,7 @@ if __name__ == "__main__":
         print("7. VISUALISING STUDENT PERFMANCE")
         print("8. SHOW ALL THE STUDENTS")
         print("9. RANKING THE STUDENTS")
-        print("10. SHOW GRADES & PASS/FAIL")
+        print("10. DELETE STUDENT")
         print("11. EXIT")
         k= int(input("enter your choice::"))
         if k==1:
@@ -255,6 +216,6 @@ if __name__ == "__main__":
         elif k==9:
             ranking(student)
         elif k==10:
-            show_grades_and_pass_fail(student)
+            student = delete_student(student)
         elif k==11:
             sys.exit()
