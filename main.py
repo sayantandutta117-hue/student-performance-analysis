@@ -10,7 +10,7 @@ import analytics
 
 # ------------------ Constants ------------------
 
-MENU_MAX = 24
+MENU_MAX = 25
 
 # ------------------ Validation helpers ------------------
 
@@ -629,7 +629,8 @@ if __name__ == "__main__":
         print("21. FILTER STUDENTS")
         print("22. TRAIN MARKS PREDICTION MODEL")
         print("23. COMPARE REGRESSION MODELS")
-        print("24. EXIT")
+        print("24. CLASSIFY STUDENT PASS/FAIL")
+        print("25. EXIT")
         k = get_valid_menu_choice("enter your choice::", 1, MENU_MAX)
         if k == 1:
             student = main()
@@ -765,4 +766,25 @@ if __name__ == "__main__":
                         print(cv_results.to_string(index=False))
                     print("=" * 60)
         elif k == 24:
+            if student.empty:
+                print("no student available")
+            else:
+                print()
+                print("=" * 60)
+                print("CLASSIFICATION: STUDENT PASS/FAIL PREDICTION")
+                print("=" * 60)
+                comparison = analytics.compare_classification_models(student)
+                if comparison is not None:
+                    print(comparison.to_string(index=False))
+                    print()
+                    cv_results = analytics.cross_validate_classification_models(student)
+                    if cv_results is not None:
+                        print("-" * 60)
+                        print("CROSS-VALIDATION")
+                        print("-" * 60)
+                        print(cv_results.to_string(index=False))
+                    print("=" * 60)
+                else:
+                    print("Classification cannot be performed with the current data.")
+        elif k == 25:
             sys.exit()

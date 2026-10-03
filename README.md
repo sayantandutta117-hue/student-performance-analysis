@@ -37,6 +37,7 @@ It allows adding, updating, deleting, ranking and visualizing student marks and 
 - Centralized configuration for grade boundaries, pass mark, at-risk thresholds, and attendance categories
 - Machine Learning: Linear Regression model predicts marks from multiple academic features
 - Machine Learning: Compare multiple regression models (Linear, Decision Tree, Random Forest) with cross-validation
+- Machine Learning: Classify student Pass/Fail using multiple classifiers with cross-validation
 - SQLite persistence: student data survives application restarts (stored in `students.db`)
 
 ## Project Structure
@@ -153,6 +154,70 @@ The comparison also runs k-fold cross-validation (default 5-fold, reduced for sm
 - Performance depends on dataset size, feature quality, and data distribution
 - The same train/test split is used for fair comparison
 - Cross-validation uses only the training data, not the test set
+
+### Classification: Student Pass/Fail Prediction
+Select **"24. CLASSIFY STUDENT PASS/FAIL"** from the menu to predict whether a student will Pass or Fail based on academic features.
+
+#### Why classification instead of regression
+- Regression predicts a continuous value (marks)
+- Classification predicts a category (Pass/Fail)
+- The Pass/Fail target is derived from marks using the project's existing pass threshold
+
+#### Target creation
+- **Pass** = marks >= 50
+- **Fail** = marks < 50
+
+This uses the project's existing `PASS_MARK` configuration.
+
+#### Why marks is excluded from features
+Because Pass/Fail is derived from marks, including marks as a feature would cause **target leakage**. The model would directly observe the value used to create the target, producing unrealistically high accuracy. Marks is intentionally excluded from classification features.
+
+#### Features used
+- `attendance` (attendance percentage, 0-100)
+- `study_hours` (study hours per day, 0-24)
+- `assignment_score` (assignment score, 0-100)
+- `midterm_marks` (midterm exam marks, 0-100)
+- `previous_marks` (previous exam marks, 0-100)
+
+#### Available models
+- **Logistic Regression** — linear classifier
+- **Decision Tree Classifier** — tree-based classifier
+- **Random Forest Classifier** — ensemble of decision trees
+
+#### How classification comparison works
+1. All models use the same cleaned dataset
+2. All models use the same 5 academic features
+3. All models use stratified train/test split (70% train, 30% test, random_state=42)
+4. Each model is trained independently and evaluated on the same held-out test set
+5. Cross-validation uses StratifiedKFold to preserve class balance
+
+#### Classification metrics
+- **Accuracy** — overall correct predictions
+- **Precision** — of predicted Pass, how many actually Passed
+- **Recall** — of actual Pass, how many were predicted correctly
+- **F1-score** — harmonic mean of Precision and Recall
+
+#### Confusion matrix
+The confusion matrix shows:
+```
+[[True Negative, False Positive],
+ [False Negative, True Positive]]
+```
+Where:
+- **Fail** is the negative class (0)
+- **Pass** is the positive class (1)
+
+#### Cross-validation
+- Uses StratifiedKFold with shuffle=True and random_state=42
+- Number of folds never exceeds the minority class count
+- Reports mean and standard deviation for Accuracy, Precision, Recall, and F1
+
+#### Important notes
+- No model is automatically labeled as "best"
+- Performance depends on dataset size, class balance, feature quality, and data distribution
+- The same train/test split is used for fair comparison
+- Cross-validation uses only training data, not the test set
+- Both Pass and Fail classes must exist in the data for training to proceed
 
 ## Student Schema
 The application stores the following fields for each student:

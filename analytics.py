@@ -1,16 +1,24 @@
 """
-Machine learning regression module for student marks prediction.
+Machine learning regression and classification module for student performance prediction.
 
-Uses scikit-learn to compare multiple regression models.
+Uses scikit-learn for:
+- Regression: predict marks from academic features
+- Classification: predict Pass/Fail from academic features
 """
 
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
+from sklearn.metrics import (
+    mean_absolute_error, mean_squared_error, r2_score,
+    accuracy_score, precision_score, recall_score, f1_score,
+    confusion_matrix
+)
+
+import config
 
 # ML configuration
 FEATURE_COLUMNS = [
@@ -20,7 +28,8 @@ FEATURE_COLUMNS = [
     "midterm_marks",
     "previous_marks",
 ]
-TARGET_COLUMN = "marks"
+REGRESSION_TARGET_COLUMN = "marks"
+CLASSIFICATION_TARGET_COLUMN = "pass_fail"
 MIN_TOTAL_SAMPLES = 5
 RANDOM_STATE = 42
 TEST_SIZE = 0.3
@@ -50,12 +59,12 @@ def prepare_regression_data(student):
         print(f"Cannot train model: missing feature columns: {', '.join(missing_features)}")
         return None, None
 
-    if TARGET_COLUMN not in student.columns:
-        print(f"Cannot train model: missing target column '{TARGET_COLUMN}'.")
+    if REGRESSION_TARGET_COLUMN not in student.columns:
+        print(f"Cannot train model: missing target column '{REGRESSION_TARGET_COLUMN}'.")
         return None, None
 
     X = student[FEATURE_COLUMNS].copy()
-    y = student[TARGET_COLUMN].copy()
+    y = student[REGRESSION_TARGET_COLUMN].copy()
 
     # Ensure numeric types
     for col in FEATURE_COLUMNS:
@@ -152,7 +161,7 @@ def train_regression_model(student):
         "y_pred": y_pred,
         "metrics": metrics,
         "features": FEATURE_COLUMNS,
-        "target": TARGET_COLUMN,
+        "target": REGRESSION_TARGET_COLUMN,
         "used_rows": used_rows,
         "total_rows": total_rows,
     }
@@ -320,6 +329,334 @@ def cross_validate_regression_models(student):
 
     result_df = pd.DataFrame(rows)
     result_df = result_df[["Model", "RMSE Mean", "RMSE Std", "R² Mean", "R² Std"]]
+    return result_df
+
+
+# ---------------------------------------------------------------------------
+# Classification: Pass/Fail prediction
+# ---------------------------------------------------------------------------
+
+def prepare_classification_data(student):
+    """
+    Validate and prepare data for Pass/Fail classification.
+
+    Target is derived from marks using config.PASS_MARK:
+        marks >= PASS_MARK -> Pass
+        marks < PASS_MARK  -> Fail
+
+    Returns:
+        (X, y, label_map) or (None, None, None) if data is invalid.
+        label_map: dict with keys 0, 1 and values "Fail", "Pass"
+    """
+    if student.empty:
+        print("Cannot train classifier: dataset is empty.")
+        return None, None, None
+
+    missing_features = [col for col in FEATURE_COLUMNS if col not in student.columns]
+    if missing_features:
+        print(f"Cannot train classifier: missing feature columns: {', '.join(missing_features)}")
+        return None, None, None
+
+    if REGRESSION_TARGET_COLUMN not in student.columns:
+        print(f"Cannot train classifier: missing '{REGRESSION_TARGET_COLUMN}' column.")
+        return None, None, None
+
+    X = student[FEATURE_COLUMNS].copy()
+    marks = student[REGRESSION_TARGET_COLUMN].copy()
+
+    # Ensure numeric types
+    for col in FEATURE_COLUMNS:
+        X[col] = pd.to_numeric(X[col], errors="coerce")
+    marks = pd.to_numeric(marks, errors="coerce")
+
+    # Detect missing values
+    missing_mask = X.isna().any(axis=1) | marks.isna()
+    missing_count = int(missing_mask.sum())
+    if missing_count > 0:
+        print(
+            f"Warning: {missing_count} record(s) have missing or non-numeric features "
+            f"and will be excluded from classification training."
+        )
+
+    X = X[~missing_mask].reset_index(drop=True)
+    marks = marks[~missing_mask].reset_index(drop=True)
+
+    # Derive target: Pass = 1, Fail = 0
+    y = (marks >= config.PASS_MARK).astype(int).values
+
+    # Verify both classes exist
+    unique_classes = np.unique(y)
+    if len(unique_classes) < 2:
+        print(
+            f"Cannot train classifier: need both Pass and Fail examples. "
+            f"Found only {'Pass' if unique_classes[0] == 1 else 'Fail'} students."
+        )
+        return None, None, None
+
+    if len(X) < MIN_TOTAL_SAMPLES:
+        print(
+            f"Cannot train classifier: need at least {MIN_TOTAL_SAMPLES} complete student records. "
+            f"Current complete records: {len(X)}."
+        )
+        return None, None, None
+
+    label_map = {0: "Fail", 1: "Pass"}
+    return X, y, label_map
+
+
+def get_classification_models():
+    """
+    Return a dict of model name -> sklearn classifier.
+
+    All applicable models use random_state=42 for reproducibility.
+    """
+    return {
+        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=RANDOM_STATE),
+        "Decision Tree": DecisionTreeClassifier(random_state=RANDOM_STATE),
+        "Random Forest": RandomForestClassifier(random_state=RANDOM_STATE),
+    }
+
+
+def _train_single_classifier(model, X_train, y_train, X_test, y_test):
+    """Fit a classifier and return (model, y_pred, metrics_dict)."""
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    metrics = evaluate_classification_model(y_test, y_pred)
+    return model, y_pred, metrics
+
+
+def train_classification_model(student):
+    """
+    Train a Logistic Regression classifier to predict Pass/Fail.
+
+    Returns:
+        dict with keys:
+            model, X_train, X_test, y_train, y_test,
+            y_pred, metrics, features, target,
+            used_rows, total_rows, label_map
+        or None if training fails.
+    """
+    X, y, label_map = prepare_classification_data(student)
+    if X is None:
+        return None
+
+    total_rows = len(student)
+    used_rows = len(X)
+
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+        )
+    except ValueError as e:
+        print(f"Cannot perform stratified train/test split: {e}")
+        return None
+
+    model = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+    _, y_pred, metrics = _train_single_classifier(model, X_train, y_train, X_test, y_test)
+
+    return {
+        "model": model,
+        "X_train": X_train,
+        "X_test": X_test,
+        "y_train": y_train,
+        "y_test": y_test,
+        "y_pred": y_pred,
+        "metrics": metrics,
+        "features": FEATURE_COLUMNS,
+        "target": CLASSIFICATION_TARGET_COLUMN,
+        "used_rows": used_rows,
+        "total_rows": total_rows,
+        "label_map": label_map,
+    }
+
+
+def predict_pass_fail(model, feature_values):
+    """
+    Predict Pass/Fail for given feature values.
+
+    Args:
+        model: trained classifier
+        feature_values: list or array of 5 numeric values in the order:
+            [attendance, study_hours, assignment_score, midterm_marks, previous_marks]
+
+    Returns:
+        "Pass" or "Fail" string, or None on error.
+    """
+    if not hasattr(feature_values, "__iter__") or len(feature_values) != len(FEATURE_COLUMNS):
+        print(
+            f"Invalid input: expected {len(FEATURE_COLUMNS)} feature values "
+            f"({', '.join(FEATURE_COLUMNS)})."
+        )
+        return None
+
+    try:
+        values = [float(v) for v in feature_values]
+    except (TypeError, ValueError):
+        print("Invalid feature values. Please enter numeric values.")
+        return None
+
+    prediction = model.predict([values])
+    label_map = {0: "Fail", 1: "Pass"}
+    return label_map.get(int(prediction[0]), "Unknown")
+
+
+def evaluate_classification_model(y_true, y_pred):
+    """
+    Calculate classification evaluation metrics.
+
+    Positive class: Pass (1)
+
+    Returns:
+        dict with Accuracy, Precision, Recall, F1.
+    """
+    return {
+        "accuracy": accuracy_score(y_true, y_pred),
+        "precision": precision_score(y_true, y_pred, zero_division=0),
+        "recall": recall_score(y_true, y_pred, zero_division=0),
+        "f1": f1_score(y_true, y_pred, zero_division=0),
+    }
+
+
+def calculate_confusion_matrix(y_true, y_pred):
+    """
+    Calculate confusion matrix.
+
+    Class order: Fail (0), Pass (1)
+    Returns:
+        dict with keys: tn, fp, fn, tp
+    """
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    return {
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
+    }
+
+
+def compare_classification_models(student):
+    """
+    Train and evaluate multiple classifiers on the same data.
+
+    Returns:
+        pandas.DataFrame with columns:
+            Model, Accuracy, Precision, Recall, F1
+        or None if training fails.
+    """
+    X, y, label_map = prepare_classification_data(student)
+    if X is None:
+        return None
+
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+        )
+    except ValueError as e:
+        print(f"Cannot perform stratified train/test split: {e}")
+        return None
+
+    models = get_classification_models()
+    rows = []
+
+    for name, model in models.items():
+        _, y_pred, metrics = _train_single_classifier(model, X_train, y_train, X_test, y_test)
+        rows.append({
+            "Model": name,
+            "Accuracy": metrics["accuracy"],
+            "Precision": metrics["precision"],
+            "Recall": metrics["recall"],
+            "F1": metrics["f1"],
+        })
+
+    result_df = pd.DataFrame(rows)
+    result_df = result_df[["Model", "Accuracy", "Precision", "Recall", "F1"]]
+    return result_df
+
+
+def _safe_stratified_folds(n_samples, n_minority):
+    """Return a safe number of stratified CV folds."""
+    if n_minority < 2:
+        return 0
+    return min(CV_FOLDS, n_minority)
+
+
+def cross_validate_classification_models(student):
+    """
+    Run stratified k-fold cross-validation for all classifiers.
+
+    Uses StratifiedKFold with shuffle=True and random_state=42.
+
+    Returns:
+        pandas.DataFrame with columns:
+            Model, Accuracy Mean, Accuracy Std, Precision Mean, Precision Std,
+            Recall Mean, Recall Std, F1 Mean, F1 Std
+        or None if cross-validation fails.
+    """
+    X, y, label_map = prepare_classification_data(student)
+    if X is None:
+        return None
+
+    n_samples = len(X)
+    # Determine minority class count for safe fold count
+    _, counts = np.unique(y, return_counts=True)
+    n_minority = int(np.min(counts))
+    k = _safe_stratified_folds(n_samples, n_minority)
+
+    if k < 2:
+        print(
+            f"Cannot run cross-validation: need at least 2 samples in the minority class. "
+            f"Current minority class count: {n_minority}."
+        )
+        return None
+
+    if k != CV_FOLDS:
+        print(
+            f"Note: dataset is small (minority class has {n_minority} samples). "
+            f"Using {k}-fold cross-validation instead of {CV_FOLDS}-fold."
+        )
+
+    skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=RANDOM_STATE)
+    models = get_classification_models()
+    rows = []
+
+    for name, model in models.items():
+        fold_accuracy = []
+        fold_precision = []
+        fold_recall = []
+        fold_f1 = []
+
+        for train_idx, val_idx in skf.split(X, y):
+            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+
+            model_clone = _clone_model(model)
+            model_clone.fit(X_train, y_train)
+            y_pred = model_clone.predict(X_val)
+
+            fold_accuracy.append(accuracy_score(y_val, y_pred))
+            fold_precision.append(precision_score(y_val, y_pred, zero_division=0))
+            fold_recall.append(recall_score(y_val, y_pred, zero_division=0))
+            fold_f1.append(f1_score(y_val, y_pred, zero_division=0))
+
+        rows.append({
+            "Model": name,
+            "Accuracy Mean": np.mean(fold_accuracy),
+            "Accuracy Std": np.std(fold_accuracy, ddof=1),
+            "Precision Mean": np.mean(fold_precision),
+            "Precision Std": np.std(fold_precision, ddof=1),
+            "Recall Mean": np.mean(fold_recall),
+            "Recall Std": np.std(fold_recall, ddof=1),
+            "F1 Mean": np.mean(fold_f1),
+            "F1 Std": np.std(fold_f1, ddof=1),
+        })
+
+    result_df = pd.DataFrame(rows)
+    result_df = result_df[[
+        "Model", "Accuracy Mean", "Accuracy Std",
+        "Precision Mean", "Precision Std",
+        "Recall Mean", "Recall Std",
+        "F1 Mean", "F1 Std"
+    ]]
     return result_df
 
 

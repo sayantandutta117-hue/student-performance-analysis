@@ -1639,5 +1639,345 @@ class TestAnalyticsCrossValidateRegressionModels(unittest.TestCase):
         self.assertTrue(all(result["R² Mean"].notna()))
 
 
+# ---------------------------------------------------------------------------
+# Classification tests
+# ---------------------------------------------------------------------------
+
+class TestAnalyticsGetClassificationModels(unittest.TestCase):
+    def test_all_three_classifiers_available(self):
+        models = analytics.get_classification_models()
+        self.assertIn("Logistic Regression", models)
+        self.assertIn("Decision Tree", models)
+        self.assertIn("Random Forest", models)
+        self.assertEqual(len(models), 3)
+
+    def test_logistic_regression_max_iter(self):
+        models = analytics.get_classification_models()
+        lr = models["Logistic Regression"]
+        self.assertEqual(lr.max_iter, 1000)
+
+    def test_random_state_reproducible(self):
+        models = analytics.get_classification_models()
+        for name, model in models.items():
+            params = model.get_params()
+            if "random_state" in params:
+                self.assertEqual(params["random_state"], analytics.RANDOM_STATE)
+
+
+class TestAnalyticsPrepareClassificationData(unittest.TestCase):
+    def test_empty_dataframe(self):
+        X, y, label_map = analytics.prepare_classification_data(pd.DataFrame())
+        self.assertIsNone(X)
+        self.assertIsNone(y)
+        self.assertIsNone(label_map)
+
+    def test_missing_feature_columns(self):
+        student = pd.DataFrame({
+            "name": ["Alice"],
+            "roll": [1],
+            "marks": [85],
+            "phone": ["1234567890"],
+        })
+        X, y, label_map = analytics.prepare_classification_data(student)
+        self.assertIsNone(X)
+
+    def test_marks_derives_pass_fail_target(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
+            "roll": [1, 2, 3, 4, 5],
+            "marks": [85, 45, 50, 92, 38],
+            "phone": ["1234567890", "1234567891", "1234567892", "1234567893", "1234567894"],
+            "attendance": [95, 80, 60, 96, 60],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0],
+            "assignment_score": [80, 85, 75, 90, 60],
+            "midterm_marks": [70, 75, 68, 80, 55],
+            "previous_marks": [78, 82, 74, 85, 60]
+        })
+        X, y, label_map = analytics.prepare_classification_data(student)
+        self.assertIsNotNone(X)
+        self.assertIsNotNone(y)
+        self.assertEqual(list(X.columns), analytics.FEATURE_COLUMNS)
+        self.assertEqual(list(y), [1, 0, 1, 1, 0])  # Pass, Fail, Pass, Pass, Fail
+        self.assertEqual(label_map, {0: "Fail", 1: "Pass"})
+
+    def test_marks_not_in_features(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
+            "roll": [1, 2, 3, 4, 5],
+            "marks": [85, 45, 50, 92, 38],
+            "phone": ["1234567890", "1234567891", "1234567892", "1234567893", "1234567894"],
+            "attendance": [95, 80, 60, 96, 60],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0],
+            "assignment_score": [80, 85, 75, 90, 60],
+            "midterm_marks": [70, 75, 68, 80, 55],
+            "previous_marks": [78, 82, 74, 85, 60]
+        })
+        X, y, label_map = analytics.prepare_classification_data(student)
+        self.assertIsNotNone(X)
+        self.assertNotIn("marks", X.columns)
+        self.assertNotIn("name", X.columns)
+        self.assertNotIn("roll", X.columns)
+        self.assertNotIn("phone", X.columns)
+
+    def test_missing_values_excluded(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank"],
+            "roll": [1, 2, 3, 4, 5, 6],
+            "marks": [85, 45, 50, 92, 38, 70],
+            "phone": ["1234567890", "1234567891", "1234567892", "1234567893", "1234567894", "1234567895"],
+            "attendance": [95, None, 60, 96, 60, 75],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 4.0],
+            "assignment_score": [80, 85, 75, 90, 60, 70],
+            "midterm_marks": [70, 75, 68, 80, 55, 65],
+            "previous_marks": [78, 82, 74, 85, 60, 68]
+        })
+        with patch('builtins.print') as mock_print:
+            X, y, label_map = analytics.prepare_classification_data(student)
+        printed = " ".join(str(call) for call in mock_print.call_args_list)
+        self.assertIn("missing", printed.lower())
+        self.assertIsNotNone(X)
+        self.assertEqual(len(X), 5)
+
+    def test_single_class_rejected(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
+            "roll": [1, 2, 3, 4, 5],
+            "marks": [85, 90, 88, 92, 87],
+            "phone": ["1234567890", "1234567891", "1234567892", "1234567893", "1234567894"],
+            "attendance": [95, 80, 60, 96, 60],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0],
+            "assignment_score": [80, 85, 75, 90, 60],
+            "midterm_marks": [70, 75, 68, 80, 55],
+            "previous_marks": [78, 82, 74, 85, 60]
+        })
+        with patch('builtins.print') as mock_print:
+            X, y, label_map = analytics.prepare_classification_data(student)
+        printed = " ".join(str(call) for call in mock_print.call_args_list)
+        self.assertIn("both pass and fail", printed.lower())
+        self.assertIsNone(X)
+
+    def test_insufficient_data_rejected(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 45],
+            "phone": ["1234567890", "1234567891"],
+            "attendance": [95, 80],
+            "study_hours": [5.0, 4.0],
+            "assignment_score": [80, 85],
+            "midterm_marks": [70, 75],
+            "previous_marks": [78, 82]
+        })
+        X, y, label_map = analytics.prepare_classification_data(student)
+        self.assertIsNone(X)
+
+
+class TestAnalyticsTrainClassificationModel(unittest.TestCase):
+    def setUp(self):
+        np.random.seed(42)
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Henry"],
+            "roll": [1, 2, 3, 4, 5, 6, 7, 8],
+            "marks": [85, 45, 78, 92, 38, 88, 72, 55],
+            "phone": ["1234567890"] * 8,
+            "attendance": [95, 80, 96, 75, 60, 92, 85, 70],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5, 3.0],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70, 65],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65, 60],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72, 68]
+        })
+
+    def test_successful_training(self):
+        result = analytics.train_classification_model(self.student)
+        self.assertIsNotNone(result)
+        self.assertIn("model", result)
+        self.assertIn("metrics", result)
+        self.assertIn("label_map", result)
+
+    def test_prediction_returns_pass_fail(self):
+        result = analytics.train_classification_model(self.student)
+        self.assertIsNotNone(result)
+        pred = analytics.predict_pass_fail(result["model"], [90, 5.0, 80, 70, 78])
+        self.assertIn(pred, ["Pass", "Fail"])
+
+    def test_prediction_invalid_input_returns_none(self):
+        result = analytics.train_classification_model(self.student)
+        self.assertIsNotNone(result)
+        pred = analytics.predict_pass_fail(result["model"], ["not_a_number", 5.0, 80, 70, 78])
+        self.assertIsNone(pred)
+
+    def test_prediction_wrong_features_returns_none(self):
+        result = analytics.train_classification_model(self.student)
+        self.assertIsNotNone(result)
+        pred = analytics.predict_pass_fail(result["model"], [90, 5.0, 80])
+        self.assertIsNone(pred)
+
+    def test_insufficient_data_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 45],
+            "phone": ["1234567890", "1234567891"],
+            "attendance": [95, 80],
+            "study_hours": [5.0, 4.0],
+            "assignment_score": [80, 85],
+            "midterm_marks": [70, 75],
+            "previous_marks": [78, 82]
+        })
+        result = analytics.train_classification_model(student)
+        self.assertIsNone(result)
+
+
+class TestAnalyticsEvaluateClassificationModel(unittest.TestCase):
+    def test_metrics_exist_and_numeric(self):
+        y_true = np.array([1, 0, 1, 0, 1])
+        y_pred = np.array([1, 0, 1, 1, 0])
+        metrics = analytics.evaluate_classification_model(y_true, y_pred)
+        for key in ["accuracy", "precision", "recall", "f1"]:
+            self.assertIn(key, metrics)
+            self.assertIsInstance(metrics[key], (int, float))
+            self.assertGreaterEqual(metrics[key], 0)
+            self.assertLessEqual(metrics[key], 1)
+
+
+class TestAnalyticsConfusionMatrix(unittest.TestCase):
+    def test_confusion_matrix_shape_and_values(self):
+        y_true = np.array([1, 0, 1, 0, 1, 0])
+        y_pred = np.array([1, 0, 1, 1, 0, 0])
+        cm = analytics.calculate_confusion_matrix(y_true, y_pred)
+        self.assertIn("tn", cm)
+        self.assertIn("fp", cm)
+        self.assertIn("fn", cm)
+        self.assertIn("tp", cm)
+        self.assertEqual(cm["tn"] + cm["fp"] + cm["fn"] + cm["tp"], len(y_true))
+
+
+class TestAnalyticsCompareClassificationModels(unittest.TestCase):
+    def setUp(self):
+        np.random.seed(42)
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Henry", "Ivy", "Jack"],
+            "roll": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "marks": [85, 45, 78, 92, 38, 88, 72, 55, 90, 40],
+            "phone": ["1234567890"] * 10,
+            "attendance": [95, 80, 96, 75, 60, 92, 85, 70, 97, 65],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5, 3.0, 5.5, 3.5],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70, 65, 92, 60],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65, 60, 82, 55],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72, 68, 88, 62]
+        })
+
+    def test_compare_returns_dataframe(self):
+        result = analytics.compare_classification_models(self.student)
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 3)
+
+    def test_compare_has_expected_columns(self):
+        result = analytics.compare_classification_models(self.student)
+        expected_cols = ["Model", "Accuracy", "Precision", "Recall", "F1"]
+        self.assertEqual(list(result.columns), expected_cols)
+
+    def test_compare_metrics_are_numeric(self):
+        result = analytics.compare_classification_models(self.student)
+        for col in ["Accuracy", "Precision", "Recall", "F1"]:
+            for val in result[col]:
+                self.assertIsInstance(val, (int, float))
+
+    def test_compare_all_models_present(self):
+        result = analytics.compare_classification_models(self.student)
+        self.assertEqual(set(result["Model"]), {
+            "Logistic Regression", "Decision Tree", "Random Forest"
+        })
+
+    def test_compare_insufficient_data_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 45],
+            "phone": ["1234567890", "1234567891"],
+            "attendance": [95, 80],
+            "study_hours": [5.0, 4.0],
+            "assignment_score": [80, 85],
+            "midterm_marks": [70, 75],
+            "previous_marks": [78, 82]
+        })
+        result = analytics.compare_classification_models(student)
+        self.assertIsNone(result)
+
+
+class TestAnalyticsCrossValidateClassificationModels(unittest.TestCase):
+    def setUp(self):
+        np.random.seed(42)
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Henry", "Ivy", "Jack"],
+            "roll": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "marks": [85, 45, 78, 92, 38, 88, 72, 55, 90, 40],
+            "phone": ["1234567890"] * 10,
+            "attendance": [95, 80, 96, 75, 60, 92, 85, 70, 97, 65],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5, 3.0, 5.5, 3.5],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70, 65, 92, 60],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65, 60, 82, 55],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72, 68, 88, 62]
+        })
+
+    def test_cv_returns_dataframe(self):
+        result = analytics.cross_validate_classification_models(self.student)
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 3)
+
+    def test_cv_has_expected_columns(self):
+        result = analytics.cross_validate_classification_models(self.student)
+        expected_cols = [
+            "Model", "Accuracy Mean", "Accuracy Std",
+            "Precision Mean", "Precision Std",
+            "Recall Mean", "Recall Std",
+            "F1 Mean", "F1 Std"
+        ]
+        self.assertEqual(list(result.columns), expected_cols)
+
+    def test_cv_metrics_are_numeric(self):
+        result = analytics.cross_validate_classification_models(self.student)
+        for col in result.columns:
+            if col != "Model":
+                for val in result[col]:
+                    self.assertIsInstance(val, (int, float))
+
+    def test_cv_all_models_present(self):
+        result = analytics.cross_validate_classification_models(self.student)
+        self.assertEqual(set(result["Model"]), {
+            "Logistic Regression", "Decision Tree", "Random Forest"
+        })
+
+    def test_cv_insufficient_data_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 45],
+            "phone": ["1234567890", "1234567891"],
+            "attendance": [95, 80],
+            "study_hours": [5.0, 4.0],
+            "assignment_score": [80, 85],
+            "midterm_marks": [70, 75],
+            "previous_marks": [78, 82]
+        })
+        result = analytics.cross_validate_classification_models(student)
+        self.assertIsNone(result)
+
+    def test_cv_single_class_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie"],
+            "roll": [1, 2, 3],
+            "marks": [85, 90, 88],
+            "phone": ["1234567890", "1234567891", "1234567892"],
+            "attendance": [95, 80, 60],
+            "study_hours": [5.0, 4.0, 6.0],
+            "assignment_score": [80, 85, 75],
+            "midterm_marks": [70, 75, 68],
+            "previous_marks": [78, 82, 74]
+        })
+        result = analytics.cross_validate_classification_models(student)
+        self.assertIsNone(result)
+
+
 if __name__ == "__main__":
     unittest.main()
