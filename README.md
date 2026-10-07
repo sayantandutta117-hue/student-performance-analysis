@@ -42,10 +42,13 @@ It allows adding, updating, deleting, ranking and visualizing student marks and 
 
 ## Project Structure
 - `main.py` — CLI menu, validation, analysis, and visualization functions
+- `app.py` — Streamlit dashboard entry point
+- `dashboard_helpers.py` — Pure data helper functions for the dashboard
 - `database.py` — SQLite persistence layer (init, load, save)
 - `config.py` — Centralized academic thresholds (grades, pass mark, at-risk, attendance categories)
-- `analytics.py` — Machine learning regression module (marks prediction)
-- `test_validation.py` — Unit tests for all functionality
+- `analytics.py` — Machine learning regression and classification module
+- `test_validation.py` — Unit tests for CLI functionality
+- `test_dashboard.py` — Unit tests for dashboard helpers
 - `requirements.txt` — Python dependencies
 
 ## Technologies Used
@@ -243,3 +246,32 @@ The application stores the following fields for each student:
 ## Running Tests
 - Run all tests: python -m unittest test_validation.py -v
 - Tests use a temporary SQLite database and do not modify `students.db`
+
+## Streamlit Dashboard
+The project includes an interactive Streamlit dashboard for academic analytics.
+
+### Dashboard Pages
+1. **Dashboard Overview** — KPI cards, grade distribution, marks distribution histogram, attendance vs marks scatter plot, and student performance summary table.
+2. **Student Management** — View, add, update, delete, search, and filter students. Forms prevent duplicate submissions. Delete requires explicit confirmation.
+3. **Student Analytics** — Grade distribution, rankings, at-risk students, attendance categories, descriptive statistics, search, and filtering.
+4. **Regression Lab** — Compare Linear Regression, Decision Tree, and Random Forest models. Shows MAE, MSE, RMSE, and R² with cross-validation results.
+5. **Classification Lab** — Compare Logistic Regression, Decision Tree, and Random Forest classifiers. Shows Accuracy, Precision, Recall, F1-score, confusion matrix, and cross-validation results.
+
+### Running the Dashboard
+```bash
+streamlit run app.py
+```
+
+### Running the CLI
+```bash
+python main.py
+```
+
+Both applications share the same SQLite database (`students.db`) and business logic. Changes made in one interface are visible in the other.
+
+### Streamlit Requirements and Limitations
+- At least 5 complete student records are required for meaningful ML training.
+- Missing academic features are excluded from training with a warning.
+- Both Pass and Fail classes must exist for classification to proceed.
+- No model is automatically labeled as "best"; performance depends on dataset size and quality.
+- The dashboard does not include authentication or deployment features.
