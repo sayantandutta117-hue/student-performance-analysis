@@ -8,6 +8,9 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import database
+
+database.DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "students.db")
+
 import analytics
 import config
 import main as student_main
@@ -22,6 +25,12 @@ from dashboard_helpers import (
     get_descriptive_stats,
     get_attendance_category_counts,
 )
+from prediction_helpers import (
+    train_specific_regression_model,
+    train_specific_classification_model,
+    get_model_explanation,
+    validate_prediction_inputs,
+)
 
 st.set_page_config(page_title="Student Performance Analysis", layout="wide")
 
@@ -32,10 +41,11 @@ PAGE_STUDENT_MGMT = "Student Management"
 PAGE_ANALYTICS = "Student Analytics"
 PAGE_REGRESSION = "Regression Lab"
 PAGE_CLASSIFICATION = "Classification Lab"
+PAGE_PREDICTION = "Prediction Lab"
 
 page = st.sidebar.radio(
     "Navigation",
-    [PAGE_DASHBOARD, PAGE_STUDENT_MGMT, PAGE_ANALYTICS, PAGE_REGRESSION, PAGE_CLASSIFICATION],
+    [PAGE_DASHBOARD, PAGE_STUDENT_MGMT, PAGE_ANALYTICS, PAGE_REGRESSION, PAGE_CLASSIFICATION, PAGE_PREDICTION],
 )
 
 
@@ -454,6 +464,173 @@ def page_classification():
                 )
 
 
+def page_prediction():
+    st.header("Prediction Lab")
+    student = get_student_df()
+
+    if student.empty:
+        st.info("No student records found.")
+        return
+
+    st.caption(
+        "Predictions are model estimates. Feature importance and coefficients describe "
+        "patterns learned by the model. They do not prove that a feature causes "
+        "a student's performance to change."
+    )
+
+    tab1, tab2 = st.tabs(["Regression Prediction", "Classification Prediction"])
+
+    with tab1:
+        st.subheader("Predict Marks")
+        model_name = st.selectbox(
+            "Select Regression Model",
+            ["Linear Regression", "Decision Tree", "Random Forest"],
+        )
+
+        with st.form("regression_prediction_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                attendance = st.number_input("Attendance (0-100)", min_value=0, max_value=100, value=75)
+                study_hours = st.number_input("Study Hours per Day (0-24)", min_value=0.0, max_value=24.0, value=5.0)
+            with col2:
+                assignment_score = st.number_input("Assignment Score (0-100)", min_value=0, max_value=100, value=70)
+                midterm_marks = st.number_input("Midterm Marks (0-100)", min_value=0, max_value=100, value=70)
+            with col3:
+                previous_marks = st.number_input("Previous Marks (0-100)", min_value=0, max_value=100, value=70)
+            submitted = st.form_submit_button("Predict Marks")
+
+        if submitted:
+            with st.spinner("Training model and predicting..."):
+                result = train_specific_regression_model(student, model_name)
+                if result is None:
+                    st.error(
+                        "Cannot train model: need at least 5 complete student records "
+                        "with all academic features."
+                    )
+                else:
+                    values = [attendance, study_hours, assignment_score, midterm_marks, previous_marks]
+                    pred = analytics.predict_marks(result["model"], values)
+                    if pred is None:
+                        st.error("Prediction failed due to invalid input.")
+                    else:
+                        st.subheader("Predicted Marks")
+                        st.metric("Marks", f"{pred:.1f} / 100")
+                        st.caption(f"Model: {model_name} | Training records: {result['used_rows']}")
+
+                        explanation = get_model_explanation(result["model"], model_name, "regression")
+                        if explanation is not None:
+                            st.subheader("Model Interpretation")
+                            if explanation["type"] == "coefficients":
+                                st.write("Model Coefficients")
+                                coef_df = pd.DataFrame({
+                                    "Feature": explanation["features"],
+                                    "Coefficient": explanation["values"],
+                                })
+                                st.dataframe(coef_df, use_container_width=True)
+                                st.caption(
+                                    "A positive coefficient indicates the model's prediction increases "
+                                    "as that feature increases, holding other features constant. "
+                                    "A negative coefficient indicates the opposite. "
+                                    "Coefficients describe the fitted model relationship and do not prove causation."
+                                )
+                            else:
+                                st.write("Feature Importance")
+                                imp_df = pd.DataFrame({
+                                    "Feature": explanation["features"],
+                                    "Importance": explanation["values"],
+                                }).sort_values("Importance", ascending=False)
+                                st.dataframe(imp_df, use_container_width=True)
+                                fig, ax = plt.subplots(figsize=(8, 4))
+                                ax.barh(imp_df["Feature"][::-1], imp_df["Importance"][::-1], color="skyblue")
+                                ax.set_xlabel("Importance")
+                                ax.set_title("Feature Importance")
+                                st.pyplot(fig)
+                                plt.close(fig)
+                                st.caption(
+                                    "Feature importance values describe patterns learned by the model. "
+                                    "They do not prove that a feature causes a student's performance to change."
+                                )
+
+    with tab2:
+        st.subheader("Predict Pass/Fail")
+        model_name = st.selectbox(
+            "Select Classification Model",
+            ["Logistic Regression", "Decision Tree", "Random Forest"],
+        )
+
+        with st.form("classification_prediction_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                attendance = st.number_input("Attendance (0-100)", min_value=0, max_value=100, value=75, key="cls_attendance")
+                study_hours = st.number_input("Study Hours per Day (0-24)", min_value=0.0, max_value=24.0, value=5.0, key="cls_study_hours")
+            with col2:
+                assignment_score = st.number_input("Assignment Score (0-100)", min_value=0, max_value=100, value=70, key="cls_assignment_score")
+                midterm_marks = st.number_input("Midterm Marks (0-100)", min_value=0, max_value=100, value=70, key="cls_midterm_marks")
+            with col3:
+                previous_marks = st.number_input("Previous Marks (0-100)", min_value=0, max_value=100, value=70, key="cls_previous_marks")
+            submitted = st.form_submit_button("Predict Pass/Fail")
+
+        if submitted:
+            with st.spinner("Training model and predicting..."):
+                result = train_specific_classification_model(student, model_name)
+                if result is None:
+                    st.error(
+                        "Cannot train classifier: need at least 5 complete student records with "
+                        "both Pass and Fail examples."
+                    )
+                else:
+                    values = [attendance, study_hours, assignment_score, midterm_marks, previous_marks]
+                    pred = analytics.predict_pass_fail(result["model"], values)
+                    if pred is None:
+                        st.error("Prediction failed due to invalid input.")
+                    else:
+                        st.subheader("Prediction")
+                        st.metric("Predicted Outcome", pred)
+
+                        if hasattr(result["model"], "predict_proba"):
+                            try:
+                                proba = result["model"].predict_proba([values])[0]
+                                pass_proba = float(proba[1])
+                                st.metric("Probability of Pass", f"{pass_proba * 100:.1f}%")
+                            except Exception:
+                                pass
+
+                        st.caption(f"Model: {model_name} | Training records: {result['used_rows']}")
+
+                        explanation = get_model_explanation(result["model"], model_name, "classification")
+                        if explanation is not None:
+                            st.subheader("Model Interpretation")
+                            if explanation["type"] == "coefficients":
+                                st.write("Model Coefficients")
+                                coef_df = pd.DataFrame({
+                                    "Feature": explanation["features"],
+                                    "Coefficient": explanation["values"],
+                                })
+                                st.dataframe(coef_df, use_container_width=True)
+                                st.caption(
+                                    "Coefficients describe the fitted model relationship related to "
+                                    "the predicted class. They do not prove that a feature causes "
+                                    "a student's performance to change."
+                                )
+                            else:
+                                st.write("Feature Importance")
+                                imp_df = pd.DataFrame({
+                                    "Feature": explanation["features"],
+                                    "Importance": explanation["values"],
+                                }).sort_values("Importance", ascending=False)
+                                st.dataframe(imp_df, use_container_width=True)
+                                fig, ax = plt.subplots(figsize=(8, 4))
+                                ax.barh(imp_df["Feature"][::-1], imp_df["Importance"][::-1], color="skyblue")
+                                ax.set_xlabel("Importance")
+                                ax.set_title("Feature Importance")
+                                st.pyplot(fig)
+                                plt.close(fig)
+                                st.caption(
+                                    "Feature importance values describe patterns learned by the model. "
+                                    "They do not prove that a feature causes a student's performance to change."
+                                )
+
+
 if page == PAGE_DASHBOARD:
     page_dashboard()
 elif page == PAGE_STUDENT_MGMT:
@@ -464,3 +641,5 @@ elif page == PAGE_REGRESSION:
     page_regression()
 elif page == PAGE_CLASSIFICATION:
     page_classification()
+elif page == PAGE_PREDICTION:
+    page_prediction()

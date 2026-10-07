@@ -1,8 +1,9 @@
+import os
 import sqlite3
 import pandas as pd
 from pandas.errors import DatabaseError as PandasDatabaseError
 
-DB_PATH = "students.db"
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "students.db")
 
 # Columns that may need to be added via migration
 MIGRATION_COLUMNS = [

@@ -7,6 +7,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import dashboard_helpers
+import prediction_helpers
+import analytics
 
 
 class TestComputeKpis(unittest.TestCase):
@@ -221,8 +223,217 @@ class TestAppImport(unittest.TestCase):
             self.assertTrue(hasattr(app, "page_analytics"))
             self.assertTrue(hasattr(app, "page_regression"))
             self.assertTrue(hasattr(app, "page_classification"))
+            self.assertTrue(hasattr(app, "page_prediction"))
         except Exception as e:
             self.fail(f"Failed to import app: {e}")
+
+
+class TestTrainSpecificRegressionModel(unittest.TestCase):
+    def setUp(self):
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace"],
+            "roll": [1, 2, 3, 4, 5, 6, 7],
+            "marks": [85, 90, 78, 92, 65, 88, 72],
+            "phone": ["1234567890"] * 7,
+            "attendance": [95, 98, 80, 96, 60, 92, 75],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72]
+        })
+
+    def test_valid_prediction_works(self):
+        result = prediction_helpers.train_specific_regression_model(self.student, "Linear Regression")
+        self.assertIsNotNone(result)
+        self.assertIn("model", result)
+        self.assertIn("features", result)
+        self.assertEqual(result["features"], analytics.FEATURE_COLUMNS)
+        self.assertEqual(result["used_rows"], 7)
+
+    def test_insufficient_data_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 90],
+            "phone": ["1234567890", "1234567891"],
+            "attendance": [95, 80],
+            "study_hours": [5.0, 4.0],
+            "assignment_score": [80, 85],
+            "midterm_marks": [70, 75],
+            "previous_marks": [78, 82]
+        })
+        result = prediction_helpers.train_specific_regression_model(student, "Linear Regression")
+        self.assertIsNone(result)
+
+    def test_invalid_model_name_returns_none(self):
+        result = prediction_helpers.train_specific_regression_model(self.student, "Invalid Model")
+        self.assertIsNone(result)
+
+    def test_expected_features_used(self):
+        result = prediction_helpers.train_specific_regression_model(self.student, "Random Forest")
+        self.assertIsNotNone(result)
+        self.assertNotIn("marks", result["features"])
+        self.assertNotIn("name", result["features"])
+        self.assertNotIn("roll", result["features"])
+        self.assertNotIn("phone", result["features"])
+
+
+class TestTrainSpecificClassificationModel(unittest.TestCase):
+    def setUp(self):
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Henry"],
+            "roll": [1, 2, 3, 4, 5, 6, 7, 8],
+            "marks": [85, 45, 78, 92, 38, 88, 72, 55],
+            "phone": ["1234567890"] * 8,
+            "attendance": [95, 80, 96, 75, 60, 92, 85, 70],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5, 3.0],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70, 65],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65, 60],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72, 68]
+        })
+
+    def test_valid_prediction_returns_pass_or_fail(self):
+        result = prediction_helpers.train_specific_classification_model(self.student, "Logistic Regression")
+        self.assertIsNotNone(result)
+        pred = analytics.predict_pass_fail(result["model"], [90, 5.0, 80, 70, 78])
+        self.assertIn(pred, ["Pass", "Fail"])
+
+    def test_insufficient_data_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob"],
+            "roll": [1, 2],
+            "marks": [85, 45],
+            "phone": ["1234567890", "1234567891"],
+            "attendance": [95, 80],
+            "study_hours": [5.0, 4.0],
+            "assignment_score": [80, 85],
+            "midterm_marks": [70, 75],
+            "previous_marks": [78, 82]
+        })
+        result = prediction_helpers.train_specific_classification_model(student, "Logistic Regression")
+        self.assertIsNone(result)
+
+    def test_single_class_returns_none(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie"],
+            "roll": [1, 2, 3],
+            "marks": [85, 90, 88],
+            "phone": ["1234567890", "1234567891", "1234567892"],
+            "attendance": [95, 80, 60],
+            "study_hours": [5.0, 4.0, 6.0],
+            "assignment_score": [80, 85, 75],
+            "midterm_marks": [70, 75, 68],
+            "previous_marks": [78, 82, 74]
+        })
+        result = prediction_helpers.train_specific_classification_model(student, "Logistic Regression")
+        self.assertIsNone(result)
+
+    def test_expected_features_used(self):
+        result = prediction_helpers.train_specific_classification_model(self.student, "Random Forest")
+        self.assertIsNotNone(result)
+        self.assertNotIn("marks", result["features"])
+        self.assertNotIn("name", result["features"])
+        self.assertNotIn("roll", result["features"])
+        self.assertNotIn("phone", result["features"])
+
+
+class TestGetModelExplanation(unittest.TestCase):
+    def setUp(self):
+        self.student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace"],
+            "roll": [1, 2, 3, 4, 5, 6, 7],
+            "marks": [85, 90, 78, 92, 65, 88, 72],
+            "phone": ["1234567890"] * 7,
+            "attendance": [95, 98, 80, 96, 60, 92, 75],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72]
+        })
+
+    def test_linear_regression_returns_coefficients(self):
+        result = prediction_helpers.train_specific_regression_model(self.student, "Linear Regression")
+        explanation = prediction_helpers.get_model_explanation(result["model"], "Linear Regression", "regression")
+        self.assertIsNotNone(explanation)
+        self.assertEqual(explanation["type"], "coefficients")
+        self.assertEqual(len(explanation["values"]), 5)
+        self.assertEqual(explanation["features"], analytics.FEATURE_COLUMNS)
+        for v in explanation["values"]:
+            self.assertIsInstance(v, float)
+
+    def test_logistic_regression_returns_coefficients(self):
+        student = pd.DataFrame({
+            "name": ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Henry"],
+            "roll": [1, 2, 3, 4, 5, 6, 7, 8],
+            "marks": [85, 45, 78, 92, 38, 88, 72, 55],
+            "phone": ["1234567890"] * 8,
+            "attendance": [95, 80, 96, 75, 60, 92, 85, 70],
+            "study_hours": [5.0, 4.0, 6.0, 5.5, 3.0, 6.0, 4.5, 3.0],
+            "assignment_score": [80, 85, 75, 90, 60, 88, 70, 65],
+            "midterm_marks": [70, 75, 68, 80, 55, 78, 65, 60],
+            "previous_marks": [78, 82, 74, 85, 60, 80, 72, 68]
+        })
+        result = prediction_helpers.train_specific_classification_model(student, "Logistic Regression")
+        explanation = prediction_helpers.get_model_explanation(result["model"], "Logistic Regression", "classification")
+        self.assertIsNotNone(explanation)
+        self.assertEqual(explanation["type"], "coefficients")
+        self.assertEqual(len(explanation["values"]), 5)
+        self.assertEqual(explanation["features"], analytics.FEATURE_COLUMNS)
+        for v in explanation["values"]:
+            self.assertIsInstance(v, float)
+
+    def test_decision_tree_returns_feature_importance(self):
+        result = prediction_helpers.train_specific_regression_model(self.student, "Decision Tree")
+        explanation = prediction_helpers.get_model_explanation(result["model"], "Decision Tree", "regression")
+        self.assertIsNotNone(explanation)
+        self.assertEqual(explanation["type"], "feature_importance")
+        self.assertEqual(len(explanation["values"]), 5)
+        self.assertEqual(explanation["features"], analytics.FEATURE_COLUMNS)
+        for v in explanation["values"]:
+            self.assertIsInstance(v, float)
+            self.assertGreaterEqual(v, 0.0)
+
+    def test_random_forest_returns_feature_importance(self):
+        result = prediction_helpers.train_specific_regression_model(self.student, "Random Forest")
+        explanation = prediction_helpers.get_model_explanation(result["model"], "Random Forest", "regression")
+        self.assertIsNotNone(explanation)
+        self.assertEqual(explanation["type"], "feature_importance")
+        self.assertEqual(len(explanation["values"]), 5)
+        self.assertEqual(explanation["features"], analytics.FEATURE_COLUMNS)
+        for v in explanation["values"]:
+            self.assertIsInstance(v, float)
+            self.assertGreaterEqual(v, 0.0)
+
+    def test_unsupported_model_returns_none(self):
+        explanation = prediction_helpers.get_model_explanation(None, "Unknown Model")
+        self.assertIsNone(explanation)
+
+
+class TestValidatePredictionInputs(unittest.TestCase):
+    def test_valid_inputs(self):
+        valid, result = prediction_helpers.validate_prediction_inputs([75, 5.0, 80, 70, 78])
+        self.assertTrue(valid)
+        self.assertEqual(result, [75.0, 5.0, 80.0, 70.0, 78.0])
+
+    def test_none_inputs(self):
+        valid, msg = prediction_helpers.validate_prediction_inputs(None)
+        self.assertFalse(valid)
+
+    def test_wrong_length(self):
+        valid, msg = prediction_helpers.validate_prediction_inputs([75, 5.0])
+        self.assertFalse(valid)
+        self.assertIn("5", msg)
+
+    def test_non_numeric_inputs(self):
+        valid, msg = prediction_helpers.validate_prediction_inputs([75, "abc", 80, 70, 78])
+        self.assertFalse(valid)
+
+    def test_feature_leakage_verification(self):
+        self.assertNotIn("marks", analytics.FEATURE_COLUMNS)
+        self.assertNotIn("name", analytics.FEATURE_COLUMNS)
+        self.assertNotIn("roll", analytics.FEATURE_COLUMNS)
+        self.assertNotIn("phone", analytics.FEATURE_COLUMNS)
+        self.assertEqual(len(analytics.FEATURE_COLUMNS), 5)
 
 
 if __name__ == "__main__":

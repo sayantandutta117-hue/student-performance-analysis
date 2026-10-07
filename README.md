@@ -256,6 +256,7 @@ The project includes an interactive Streamlit dashboard for academic analytics.
 3. **Student Analytics** — Grade distribution, rankings, at-risk students, attendance categories, descriptive statistics, search, and filtering.
 4. **Regression Lab** — Compare Linear Regression, Decision Tree, and Random Forest models. Shows MAE, MSE, RMSE, and R² with cross-validation results.
 5. **Classification Lab** — Compare Logistic Regression, Decision Tree, and Random Forest classifiers. Shows Accuracy, Precision, Recall, F1-score, confusion matrix, and cross-validation results.
+6. **Prediction Lab** — Predict marks or Pass/Fail using a selectable model. View model coefficients or feature importance with visualizations.
 
 ### Running the Dashboard
 ```bash
@@ -275,3 +276,33 @@ Both applications share the same SQLite database (`students.db`) and business lo
 - Both Pass and Fail classes must exist for classification to proceed.
 - No model is automatically labeled as "best"; performance depends on dataset size and quality.
 - The dashboard does not include authentication or deployment features.
+
+## Prediction Lab and Model Explainability
+
+### Regression Prediction
+The Prediction Lab allows you to enter five academic features and predict a student's marks using one of the available regression models:
+
+- Linear Regression
+- Decision Tree Regressor
+- Random Forest Regressor
+
+### Classification Prediction
+You can also predict whether a student will Pass or Fail using one of the available classification models:
+
+- Logistic Regression
+- Decision Tree Classifier
+- Random Forest Classifier
+
+For classification, the model displays the predicted class and, where supported, the probability of Pass.
+
+### Model Explainability
+After prediction, the dashboard shows native model interpretation information:
+
+- **Linear Regression and Logistic Regression** — model coefficients for each feature. A positive coefficient indicates the prediction increases as the feature increases, holding other features constant. A negative coefficient indicates the opposite.
+- **Decision Tree and Random Forest** — feature importance values, displayed as a sorted table and horizontal bar chart.
+
+### Important Notes
+- Feature importance and model coefficients describe patterns learned by the model. They do not prove that a feature causes a student's performance to change.
+- Predictions are estimates based on the current dataset. They are not guaranteed outcomes.
+- The model should not be used for high-stakes decisions with very small datasets.
+- The five ML features used are: `attendance`, `study_hours`, `assignment_score`, `midterm_marks`, and `previous_marks`. The fields `marks`, `name`, `roll`, and `phone` are intentionally excluded to prevent target leakage and because they are not meaningful numeric predictors.
