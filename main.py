@@ -10,7 +10,7 @@ import analytics
 
 # ------------------ Constants ------------------
 
-MENU_MAX = 26
+MENU_MAX = 28
 
 # ------------------ Validation helpers ------------------
 
@@ -618,6 +618,94 @@ def marks_distribution_analysis(student):
     print(f"Mean Marks: {mean_marks:.2f}")
     print(f"Median Marks: {median_marks:.2f}")
 
+def performance_category_analysis(student):
+    if student.empty:
+        print("no student available")
+        return
+    marks = student["marks"]
+    valid_marks = marks[(marks >= 0) & (marks <= 100)]
+    if valid_marks.empty:
+        print("No marks within valid range (0-100) available.")
+        return
+    total_valid = len(valid_marks)
+    categories = {
+        "Excellent (80-100)": valid_marks[(valid_marks >= 80) & (valid_marks <= 100)],
+        "Good (60-79)": valid_marks[(valid_marks >= 60) & (valid_marks <= 79)],
+        "Average (40-59)": valid_marks[(valid_marks >= 40) & (valid_marks <= 59)],
+        "Needs Improvement (0-39)": valid_marks[(valid_marks >= 0) & (valid_marks <= 39)],
+    }
+    print("Student Performance Category Analysis:")
+    print(f"{'Category':<30} {'Count':<10} {'Percentage':<10}")
+    print("-" * 50)
+    counts = []
+    labels = []
+    for label, marks_series in categories.items():
+        count = len(marks_series)
+        percentage = (count / total_valid) * 100 if total_valid > 0 else 0.0
+        counts.append(count)
+        labels.append(label)
+        print(f"{label:<30} {count:<10} {percentage:.2f}%")
+    plt.figure(figsize=(8, 5))
+    plt.bar(labels, counts, color=["green", "skyblue", "orange", "red"])
+    plt.xlabel("Performance Category")
+    plt.ylabel("Number of Students")
+    plt.title("Student Performance Category Distribution")
+    plt.xticks(rotation=0)
+    for i, v in enumerate(counts):
+        plt.text(i, v + 0.1, str(v), ha="center")
+    safe_show(None)
+
+def search_student_report(student):
+    if student.empty:
+        print("no student available")
+        return
+    try:
+        roll_input = input("Enter student roll number: ").strip()
+        roll = int(roll_input)
+    except ValueError:
+        print("Invalid roll number. Please enter a numeric value.")
+        return
+    matches = student[student["roll"] == roll]
+    if matches.empty:
+        print("No matching student found.")
+        return
+    if len(matches) > 1:
+        print(f"Warning: {len(matches)} students found with roll number {roll}. Showing the first match.")
+    student_row = matches.iloc[0]
+    name = student_row["name"]
+    marks = student_row["marks"]
+    phone = student_row["phone"]
+    if pd.isna(marks) or marks < 0 or marks > 100:
+        category = "Unknown (invalid marks)"
+    elif marks >= 80:
+        category = "Excellent"
+    elif marks >= 60:
+        category = "Good"
+    elif marks >= 40:
+        category = "Average"
+    else:
+        category = "Needs Improvement"
+    valid_marks = student["marks"][(student["marks"] >= 0) & (student["marks"] <= 100)]
+    class_avg = valid_marks.mean() if not valid_marks.empty else None
+    print("\nStudent Search and Performance Report:")
+    print("=" * 40)
+    print(f"Name           : {name}")
+    print(f"Roll Number    : {roll}")
+    print(f"Marks          : {marks}")
+    print(f"Phone Number   : {phone}")
+    print(f"Category       : {category}")
+    if class_avg is not None:
+        print(f"Class Average  : {class_avg:.2f}")
+        if marks > class_avg:
+            print(f"Status         : Above class average by {marks - class_avg:.2f}")
+        elif marks < class_avg:
+            print(f"Status         : Below class average by {class_avg - marks:.2f}")
+        else:
+            print(f"Status         : Equal to class average")
+    else:
+        print("Class Average  : N/A (no valid marks)")
+    print("=" * 40)
+
 def show_all_students(student):
     if student.empty:
         print("no student available")
@@ -655,7 +743,9 @@ if __name__ == "__main__":
         print("23. COMPARE REGRESSION MODELS")
         print("24. CLASSIFY STUDENT PASS/FAIL")
         print("25. MARKS DISTRIBUTION ANALYSIS")
-        print("26. EXIT")
+        print("26. STUDENT SEARCH AND PERFORMANCE REPORT")
+        print("27. STUDENT PERFORMANCE CATEGORY ANALYSIS")
+        print("28. EXIT")
         k = get_valid_menu_choice("enter your choice::", 1, MENU_MAX)
         if k == 1:
             student = main()
@@ -814,4 +904,8 @@ if __name__ == "__main__":
         elif k == 25:
             marks_distribution_analysis(student)
         elif k == 26:
+            search_student_report(student)
+        elif k == 27:
+            performance_category_analysis(student)
+        elif k == 28:
             sys.exit()
