@@ -10,7 +10,7 @@ import analytics
 
 # ------------------ Constants ------------------
 
-MENU_MAX = 25
+MENU_MAX = 26
 
 # ------------------ Validation helpers ------------------
 
@@ -594,6 +594,30 @@ def visualize(student):
     plt.title("Students performance", color="YELLOW", fontsize=15)
     safe_show(None)
 
+def marks_distribution_analysis(student):
+    if student.empty:
+        print("no student available")
+        return
+    marks = student["marks"]
+    valid_marks = marks[(marks >= 0) & (marks <= 100)]
+    if valid_marks.empty:
+        print("No marks within valid range (0-100) available.")
+        return
+    mean_marks = valid_marks.mean()
+    median_marks = valid_marks.median()
+    plt.figure(figsize=(8, 5))
+    plt.hist(valid_marks, bins=range(0, 101, 10), color="skyblue", edgecolor="black")
+    plt.axvline(mean_marks, color="red", linestyle="--", linewidth=2, label=f"Mean: {mean_marks:.2f}")
+    plt.axvline(median_marks, color="green", linestyle="--", linewidth=2, label=f"Median: {median_marks:.2f}")
+    plt.xlabel("Marks")
+    plt.ylabel("Number of Students")
+    plt.title("Marks Distribution Histogram")
+    plt.xticks(range(0, 101, 10))
+    plt.legend()
+    safe_show(None)
+    print(f"Mean Marks: {mean_marks:.2f}")
+    print(f"Median Marks: {median_marks:.2f}")
+
 def show_all_students(student):
     if student.empty:
         print("no student available")
@@ -630,7 +654,8 @@ if __name__ == "__main__":
         print("22. TRAIN MARKS PREDICTION MODEL")
         print("23. COMPARE REGRESSION MODELS")
         print("24. CLASSIFY STUDENT PASS/FAIL")
-        print("25. EXIT")
+        print("25. MARKS DISTRIBUTION ANALYSIS")
+        print("26. EXIT")
         k = get_valid_menu_choice("enter your choice::", 1, MENU_MAX)
         if k == 1:
             student = main()
@@ -787,4 +812,6 @@ if __name__ == "__main__":
                 else:
                     print("Classification cannot be performed with the current data.")
         elif k == 25:
+            marks_distribution_analysis(student)
+        elif k == 26:
             sys.exit()
