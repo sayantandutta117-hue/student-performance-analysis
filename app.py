@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -320,9 +321,10 @@ def page_analytics():
         st.info("No student records found.")
         return
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "Grade Distribution", "Rankings", "At-Risk Students",
-        "Attendance Categories", "Descriptive Statistics", "Search & Filter"
+        "Attendance Categories", "Descriptive Statistics", "Search & Filter",
+        "Feature Correlation"
     ])
 
     with tab1:
@@ -392,6 +394,36 @@ def page_analytics():
         elif filter_type == "At-Risk Students":
             results = get_at_risk_df(student)
             st.dataframe(results, use_container_width=True)
+
+    with tab7:
+        st.subheader("Feature Correlation Heatmap")
+        corr_features = [
+            "marks", "attendance", "study_hours",
+            "assignment_score", "midterm_marks", "previous_marks",
+        ]
+        available = [c for c in corr_features if c in student.columns]
+        if student.empty or len(available) < 2:
+            st.info("Not enough numerical feature data to compute correlations.")
+        else:
+            corr_df = student[available].dropna()
+            if len(corr_df) < 2:
+                st.info("At least two complete records are required.")
+            else:
+                corr_matrix = corr_df.corr(method="pearson")
+                fig, ax = plt.subplots(figsize=(8, 6))
+                sns.heatmap(
+                    corr_matrix,
+                    annot=True,
+                    fmt=".2f",
+                    cmap="coolwarm",
+                    center=0,
+                    ax=ax,
+                    cbar_kws={"label": "Pearson Correlation"},
+                )
+                ax.set_title("Feature Correlation Heatmap")
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close(fig)
 
 
 def page_regression():
